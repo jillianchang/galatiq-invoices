@@ -21,7 +21,10 @@ Short records of each significant decision: context, choice, and why. Alternativ
 ## D3. Agents can escalate, never de-escalate
 
 **Decision.** LLM agents may add findings, decide within limits, and explain. Deterministic code owns hard constraints and payment. An LLM can only make the system more cautious.
-**Exception handled explicitly.** Item normalization can remove an "unknown item" block. Deterministic normalization (case, spacing, parentheticals) is trusted; LLM-proposed matches attach a WARN, and low-confidence matches become HOLD. The de-escalation is always visible.
+**No LLM item matching.** Item names map to SKUs only by deterministic normalization (case, spacing, parentheticals). An LLM fallback was planned, but it would be the one place an LLM could remove a block (turning an unknown item into a known one), the provided data never needs it, and a plausible-looking wrong match (`WidgetC` → `WidgetA`) would silently clear 1016's hold. Unknown items stay unknown for a human.
+**Actions come from codes.** Agents choose a finding code from a fixed list; the action is fixed by the code registry, so a model can't pick a softer action.
+**Fraud rejection needs corroboration.** An LLM `suspected_fraud` finding rejects only when another independent red flag is present (payment pressure, injection, vendor change, implausible address, no catalog items, unparseable due date). Uncorroborated, it is held for a human. On Groq, gpt-oss-20b called the White House address on 1005 fraud on its own; one odd detail shouldn't reject a real vendor.
+**Evidence must be grounded.** Every investigator finding quotes the document; a quote that doesn't appear in the document or invoice data drops the finding.
 
 ## D4. Fixed graph orchestration, no LLM supervisor
 

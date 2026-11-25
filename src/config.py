@@ -49,7 +49,6 @@ class RateLimit(BaseModel):
 class LLMPolicy(BaseModel):
     temperature: float
     max_extraction_retries: int
-    item_match_min_confidence: float
     roles: dict[Role, RoleConfig]
     rate_limit: RateLimit
 

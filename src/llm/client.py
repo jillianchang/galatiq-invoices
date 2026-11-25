@@ -50,6 +50,11 @@ class PromptTooLarge(LLMError):
     """Prompt exceeds max_prompt_tokens; the caller should send less context."""
 
 
+class ToolCallRejected(LLMError):
+    """The provider rejected the model's tool call (e.g. arguments didn't match the
+    tool's schema). Retryable: the caller can show the model the error."""
+
+
 class StructuredOutputError(LLMError):
     """The model's output didn't parse or validate against the schema."""
 
@@ -180,6 +185,7 @@ class LLMClient:
         *,
         schema: type[BaseModel] | None = None,
         tools: list[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
         max_tokens: int | None = None,
     ) -> LLMResponse:
         """One chat completion. If `schema` is given, the result is validated into
@@ -187,12 +193,17 @@ class LLMClient:
         model, effort = self.model_for(role)
         fallbacks: list[str] = []
         while True:
-            request = self._build_request(model, effort, messages, schema, tools, max_tokens)
+            request = self._build_request(
+                model, effort, messages, schema, tools, tool_choice, max_tokens
+            )
             try:
                 response = self._execute(role, request)
             except openai.BadRequestError as e:
                 fallback = self._capability_fallback(model, effort, schema, e)
                 if fallback is None:
+                    text = str(e).lower()
+                    if "tool call validation" in text or "tool_use_failed" in text:
+                        raise ToolCallRejected(str(e)) from e
                     raise LLMUnavailable(f"{model} rejected the request: {e}") from e
                 fallbacks.append(fallback)
                 self._on_event("llm_capability_fallback", {"model": model, "fallback": fallback})
@@ -217,6 +228,7 @@ class LLMClient:
         messages: list[Message],
         schema: type[BaseModel] | None,
         tools: list[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
         max_tokens: int | None,
     ) -> dict[str, Any]:
         request: dict[str, Any] = {
@@ -248,6 +260,8 @@ class LLMClient:
                 }
         if tools:
             request["tools"] = tools
+            if tool_choice:
+                request["tool_choice"] = tool_choice
         if max_tokens:
             request["max_tokens"] = max_tokens
         return request

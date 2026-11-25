@@ -5,6 +5,7 @@ from pathlib import Path
 import yaml
 
 from src.config import ROOT
+from src.rules.codes import CODES
 from src.schemas import Gate, Status
 
 INVOICE_DIR = ROOT / "data" / "invoices"
@@ -48,3 +49,10 @@ def test_spec_defined_invoices_are_tagged_spec():
             ("1016", "json"),
         ]
     }
+
+
+def test_expected_finding_codes_exist():
+    for name, exp in EXPECTED.items():
+        for scenario in (exp, exp.get("batch") or {}):
+            for code in scenario.get("required_findings", []) + scenario.get("llm_findings", []):
+                assert code in CODES, f"{name}: unknown code {code}"

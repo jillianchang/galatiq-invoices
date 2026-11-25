@@ -33,7 +33,8 @@ invoices:
     gate: REJECT
     required_findings:
       [fraud_pattern, stock_exceeded, unparseable_due_date, payment_pressure, over_threshold]
-    llm_findings: [suspected_fraud]
+    # No llm_findings: fraud_pattern already rejects it, and the investigator is told not to
+    # repeat a finding that is already raised.
     outcome: REJECTED
     must_not_pay: true
 

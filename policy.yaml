@@ -20,7 +20,6 @@ fx_rates_to_usd:        # static; no internet
 llm:                    # provider set via .env: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, LLM_MODEL_FAST
   temperature: 0
   max_extraction_retries: 3
-  item_match_min_confidence: 0.9
   roles:                # model tier and reasoning effort per agent
     extraction:   {model: fast,   reasoning_effort: low}
     investigator: {model: fast,   reasoning_effort: low}
@@ -29,6 +28,6 @@ llm:                    # provider set via .env: LLM_BASE_URL, LLM_API_KEY, LLM_
   rate_limit:           # Groq free tier, per model; set from the console's limits page
     tokens_per_minute: 8000
     max_prompt_tokens: 6000
-    expected_output_tokens: 1000   # reserved per call when pacing
+    expected_output_tokens: 500    # reserved per call when pacing (observed 40-480)
     max_retries: 5
     request_timeout_s: 60

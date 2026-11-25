@@ -88,7 +88,7 @@ Orchestration is a LangGraph state graph with conditional edges on structured st
 | Ingestion router | Deterministic | Detect format, load raw content (pdfplumber for PDFs) |
 | Parsers | Deterministic | JSON; CSV in both layouts (key-value with repeated keys in 1006, row-per-line in 1007/1015); XML (1014 nests items as `<line_items><item><name>`) |
 | Extraction agent | LLM | Unstructured text into the schema via structured output. Calls `verify_in_source` on its own output and retries with the specific error, max 3 |
-| Normalizer | Deterministic + LLM fallback | Item names to SKUs (case/spacing/parentheticals first; LLM proposal only if that fails), invoice numbers (`1002` → `INV-1002`), OCR repair (`2O26` → `2026`), dates in at least five formats |
+| Normalizer | Deterministic | Item names to SKUs (case/spacing/parentheticals only, no fuzzy or LLM matching; see D3), invoice numbers (`1002` → `INV-1002`), OCR repair (`2O26` → `2026`), dates in at least five formats |
 | History check | Deterministic | Compare against processed submissions (section 11) |
 | Validation rules | Deterministic | Rule catalog (section 6) |
 | Investigator agent | LLM + tools | Reads free text (notes, email bodies); probes ambiguity with `lookup_item`, `check_stock`, `compare_price`, `invoice_history`. Can only add findings |
@@ -151,6 +151,8 @@ Actions: `REJECT`, `RETURN`, `HOLD`, `SCRUTINY` (critic required, no gate change
 | `total_mismatch` | RETURN | subtotal + tax + shipping ≠ stated total |
 | `missing_due_date` / `unparseable_due_date` | HOLD | Null, absent, or unparseable ("yesterday") |
 | `extraction_failed` | HOLD | Grounding or schema check still failing after retries (fail closed) |
+| `missing_invoice_number` | HOLD | No invoice number, so duplicates can't be detected |
+| `incomplete_line_item` | HOLD | A line has no quantity, or neither a unit price nor an amount |
 
 All money uses `Decimal`; tolerance $0.01.
 
@@ -160,8 +162,6 @@ All money uses `Decimal`; tolerance $0.01.
 |---|---|---|
 | `no_catalog_items` | REJECT | No line matches the catalog |
 | `unknown_item` | HOLD | Some lines don't match |
-| `llm_resolved_item` | WARN | Item matched only via LLM proposal (high confidence) |
-| `low_confidence_item_match` | HOLD | LLM proposal below confidence threshold |
 | `stock_exceeded` | HOLD | **Quantity aggregated per SKU** > stock (catches 1013, where every line passes individually) |
 | `price_over_catalog` | WARN | 5–25% over catalog *with* a stated reason |
 | `price_over_catalog` | HOLD | >5% over with no reason, or >25% regardless |
@@ -186,6 +186,8 @@ Prices below catalog (volume discounts) are not flagged. Items with no catalog p
 | `duplicate` | DUPLICATE | Different submission, same invoice |
 | `revision_of_paid_invoice` | HOLD | Revision of an invoice already paid; memo shows the delta |
 | `stale_revision` | HOLD | Older revision arriving after a newer one |
+| `supersedes_unpaid_invoice` | none (info) | Revision of an unpaid original; the original is marked superseded |
+| `corrected_resubmission` | none (info) | Revision of an invoice returned to the vendor; processed as the fix |
 
 ### Text signals (deterministic keyword backstop + LLM investigator)
 
@@ -194,11 +196,13 @@ Prices below catalog (volume discounts) are not flagged. Items with no catalog p
 | `vendor_identity_change` | HOLD | "formerly", "now known as", "acquired by" |
 | `payment_pressure` | HOLD | "urgent", "pay immediately", "penalties", "wire transfer" |
 | `prompt_injection` | HOLD | Text addressed to the system ("ignore previous", "pre-approved", "skip validation") |
-| `bank_detail_change` (v2) | HOLD | "new account", "updated banking", "remit to" |
-| `suspicious_vendor_address` | HOLD | LLM investigator only: implausible vendor address (e.g., a government landmark), with cited evidence |
-| `suspected_fraud` | REJECT | LLM investigator only, with cited evidence |
+| `bank_detail_change` | HOLD | LLM investigator (keyword rule in v2) |
+| `suspicious_vendor_address` | HOLD | LLM investigator only: implausible vendor address (e.g., a government landmark) |
+| `suspected_fraud` | REJECT | LLM investigator only; rejects only if another independent red flag corroborates it, otherwise HOLD (D3) |
+| `other_concern` | WARN | LLM investigator: anything else a reviewer should see |
+| `investigation_incomplete` | WARN | The investigator couldn't finish; deterministic checks still apply |
 
-The keyword rules guarantee a safety floor without the LLM; the investigator adds judgment on top.
+The keyword rules guarantee a safety floor without the LLM; the investigator adds judgment on top. Investigator findings must quote evidence found in the document, and their actions come from the code registry, not the model.
 
 ### Deterministic fraud pattern
 
@@ -276,7 +280,6 @@ llm:                    # provider set via .env: LLM_BASE_URL, LLM_API_KEY, LLM_
     tokens_per_minute: 8000
     max_prompt_tokens: 6000
   max_extraction_retries: 3
-  item_match_min_confidence: 0.9
 ```
 
 ## 9. LLM layer
