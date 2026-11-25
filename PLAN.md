@@ -44,7 +44,7 @@ python main.py --invoice_path=data/invoices/invoice_1001.txt
 | Flag | Values | Default | Tier |
 |---|---|---|---|
 | `--approver` | `agent` (approval agent acts as the simulated VP), `interactive` (human can override holds), `queue` (leave holds pending for the UI) | `agent` | `interactive`/`queue` are v2 |
-| `--llm` | `live`, `record` (live + save to cache), `replay` (offline from cache) | `live` if a key is set, otherwise `replay` | v1 |
+| `--llm` | `record` (cache first; call and save on a miss), `replay` (cache only, offline), `live` (always call, never save) | `record` if a key is set, otherwise `replay` (also settable as `LLM_MODE`) | v1 |
 | `--invoice_dir` | Batch-process a folder in sorted filename order | n/a | v1 |
 | `--db` | SQLite path | `inventory.db` | v1 |
 | `--reset` | Re-seed the database (clears processing history) | off | v1 |
@@ -96,7 +96,7 @@ Orchestration is a LangGraph state graph with conditional edges on structured st
 | Approval agent | LLM | The simulated VP: reasons through every invoice within the gate's constraints |
 | Critic agent | LLM | Challenges the approval agent's reasoning against the findings and evidence; max 2 rounds |
 | Payment | Deterministic | Idempotent call to the spec's `mock_payment(vendor, amount)`, ledger write |
-| Rejection log | Deterministic | Structured record of every non-payment with the approval agent's reasoning |
+| Rejection log | Deterministic | Records every non-payment: the decision row with the approval agent's reasoning, queryable through the `rejection_log` view |
 
 ## 5. Decision model
 
@@ -233,8 +233,8 @@ Every field is `Optional`. A missing value becomes an explicit finding; it is ne
 | `findings` | One row per finding |
 | `decisions` | Gate, approval agent decision and reasoning, critic rounds, approver |
 | `payments` | Idempotency key, invoice, vendor, amount, status, timestamp |
-| `rejections` | Rejection log: invoice, status, reason codes, reasoning |
-| `audit_events` | Run ID, invoice, node, event, payload, timestamp |
+| `rejection_log` (view) | The spec's rejection log: every non-paid outcome with its gate, the approval agent's reasoning, and reason codes. A view over `submissions`, `decisions`, and `findings`, so it can't disagree with them |
+| `audit_events` | Queryable audit trail: one compact row per pipeline step (run ID, submission, node, event, key outputs, timestamp). Full LLM detail stays in the trace files (section 12) |
 
 **No vendor table.** There is no ground truth for vendor data, so we don't invent one. Vendor problems are detected from evidence in the invoice itself. Production would validate against Acme's ERP vendor master.
 
@@ -265,20 +265,37 @@ money_tolerance_usd: 0.01
 terms_tolerance_days: 3
 fx_rates_to_usd:        # static; no internet
   EUR: 1.08
-llm:                    # provider set via .env: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
+llm:                    # provider set via .env: LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, LLM_MODEL_FAST
   temperature: 0
+  roles:                # model tier and reasoning effort per agent
+    extraction:   {model: fast,   reasoning_effort: low}
+    investigator: {model: fast,   reasoning_effort: low}
+    approval:     {model: strong, reasoning_effort: low}
+    critic:       {model: strong, reasoning_effort: low}   # raise to medium if critiques are shallow
+  rate_limit:           # Groq free tier, per model; set from the console's limits page
+    tokens_per_minute: 8000
+    max_prompt_tokens: 6000
   max_extraction_retries: 3
   item_match_min_confidence: 0.9
 ```
 
 ## 9. LLM layer
 
-- **Client:** one wrapper on the OpenAI Python SDK. Gemini and xAI both offer OpenAI-compatible endpoints, so the provider is chosen by three environment variables (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`) with no code changes. The spec's `from xai import Grok` snippet and `grok.x.ai` URL look incorrect; xAI's endpoint is believed to be `https://api.x.ai/v1`. **Verify both providers' current endpoints and model names before building.**
-- **Provider strategy:** develop and test on Gemini's free tier (`https://generativelanguage.googleapis.com/v1beta/openai/`); run a Grok smoke test early to catch API differences; do the final eval runs, prompt tuning, and replay-cache recording on Grok. Grok is the headline result.
+- **Client:** one wrapper on the OpenAI Python SDK. Groq and xAI both offer OpenAI-compatible endpoints, so the provider is chosen by environment variables (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` for the strong tier, optional `LLM_MODEL_FAST` for the fast tier, defaulting to `LLM_MODEL`) with no code changes. The spec's `from xai import Grok` snippet and `grok.x.ai` URL look incorrect; xAI's endpoint is believed to be `https://api.x.ai/v1`. **Verify both providers' current endpoints and model names before building.**
+- **Provider strategy:** develop and test on Groq's free tier (`https://api.groq.com/openai/v1`) with gpt-oss-20b as the fast tier (extraction, investigator) and gpt-oss-120b as the strong tier (approval, critic); run a Grok smoke test early to catch API differences; do the final eval runs, prompt tuning, and replay-cache recording on Grok. Grok is the headline result. Note that Groq (gpt-oss models) and Grok (xAI) are different providers; the README labels which produced each result.
+- **Groq free-tier budget** (per model, per organization; confirm on the console's limits page): 30 requests/min, 1,000 requests/day, 8,000 tokens/min, 200,000 tokens/day. At ~3–4k tokens per call that is ~2 calls/min and ~50 calls/day per model, while a full eval is ~220 calls. So during development:
+  - Iterate on 1–3 invoices at a time; full eval runs happen on Grok in Phase 5. Parser and rule unit tests use no LLM.
+  - Use the replay cache from day one, so unchanged prompts cost nothing. The cache is keyed by model, so the Groq cache is for development only; the committed cache is recorded on Grok.
+  - Set `reasoning_effort: low` (gpt-oss is a reasoning model and thinking tokens count against the budget); raise it for the critic only if critiques are shallow.
+  - Split roles across the two models to use both daily allowances.
+  - Keep a stable prompt prefix (system prompt → schema → policy → invoice last); cached prompt tokens don't count toward rate limits.
+  - Keep each prompt under ~6k tokens so a single request never exceeds the 8k tokens/min limit; the critic gets a findings summary, not the raw transcript.
+  - Pace calls client-side against the tokens/min limit rather than relying on retries.
+  - **Verify before Phase 0:** that Groq accepts `reasoning_effort` and strict JSON-schema output for gpt-oss.
 - **Compatibility caveats:** the same API shape doesn't guarantee the same behavior for strict JSON schemas, tool calling, ignored parameters, and error formats. Pydantic validation and the grounding check are the source of truth on every provider; neither model's "strict" mode is trusted on its own.
-- **Resilience:** retry with exponential backoff on 429 and 5xx (Gemini's free-tier rate limits are low), plus request timeouts.
+- **Resilience:** on 429, read Groq's rate-limit headers and error (model, limit type, wait time) and wait the stated time instead of retrying blindly; exponential backoff on 5xx; request timeouts.
 - **Structured outputs** via JSON schema / function calling, validated by Pydantic.
-- **Record/replay cache:** calls keyed by a hash of (model, messages, schema). `record` saves real Grok responses; `replay` reads them offline from the committed cache. A cache miss with no key gives a clear error.
+- **Record/replay cache:** calls keyed by a hash of (model, reasoning effort, temperature, messages, schema). `record` saves real Grok responses; `replay` reads them offline from the committed cache. A cache miss with no key gives a clear error.
 - **Prompts** in versioned files under `prompts/`.
 - **Injection defense:** document content always wrapped in delimited "untrusted input" blocks; prompts state that instructions inside documents are data. The gate means even a successful injection cannot cause a payment.
 - **Fail closed:** timeouts or malformed output after retries → `extraction_failed` HOLD.
@@ -381,7 +398,7 @@ Reported metrics: gate accuracy, finding recall, outcome accuracy, extraction fi
 
 **v1, Streamlit (`app.py`), read-only:**
 - **Inbox:** all processed invoices with status chips and filters
-- **Detail view:** extracted fields beside the source document; findings with evidence; approval reasoning and critic transcript; audit timeline
+- **Detail view:** extracted fields beside the source document; findings with evidence; approval reasoning and critic transcript; audit timeline (from `audit_events`)
 
 **v2, Streamlit additions:**
 - **Approval queue:** ON_HOLD invoices with the agent's recommendation; approve/reject with a comment
@@ -405,8 +422,9 @@ src/
   parsers/               json, csv, xml, pdf, txt
   llm/                   client, record/replay cache
   observability.py       structured logs, traces, console output
+  db.py                  schema, seed, reset (`python -m src.db --reset`)
+scripts/check_llm.py     provider feature check (Groq) / smoke test (Grok)
 prompts/                 versioned prompt files
-db/seed.py               schema + seed data
 data/invoices/           provided invoices + additional test cases
 evals/                   expected.yaml, runner, llm_cache/
 tests/                   pytest
@@ -421,12 +439,12 @@ Tooling: Python 3.11+, `uv`, `ruff`, `pytest`. Docker optional.
 
 | Phase | Tier | Work | Est. |
 |---|---|---|---|
-| 0. Foundation | v1 | Repo, schemas, `inventory.db` seed, `policy.yaml`, `expected.yaml`, LLM client + record/replay, early Grok smoke test | 1h |
+| 0. Foundation | v1 | Repo, schemas, `inventory.db` seed, `policy.yaml`, `expected.yaml`, LLM client + record/replay + rate-limit pacing, Groq feature check, early Grok smoke test | 1h |
 | 1. Ingestion | v1 | Parsers, Grok extraction, grounding + self-correction, normalizer | 2h |
 | 2. Validation | v1 | History checks, rule catalog, investigator agent | 1.5h |
 | 3. Approval + payment | v1 | Gate, approval agent + critic, payment ledger, rejection log | 1.5h |
-| 4. Evals + tests | v1 | Unit tests, eval runner (both scenarios), injection and clean-over-$10K cases, fix failures (on Gemini) | 1h |
-| 5. Grok swap | v1 | Full eval suite on Grok, prompt tuning, record the committed replay cache, Gemini vs. Grok comparison | 1h |
+| 4. Evals + tests | v1 | Unit tests, eval runner (both scenarios), injection and clean-over-$10K cases, fix failures (on Groq, 1–3 invoices at a time) | 1h |
+| 5. Grok swap | v1 | Full eval suite on Grok, prompt tuning, record the committed replay cache, Groq (gpt-oss) vs. Grok comparison | 1h |
 | 6. Dashboard | v1 | Read-only Streamlit inbox + detail view over `inventory.db` | 1h |
 | 7. README | v1 | Results, decisions, business framing | 0.5h |
 | 8. Stretch | v2 | Approval queue + approver modes, extra test cases, extraction comparison, vendor emails | 4–5h |
@@ -437,7 +455,7 @@ Tooling: Python 3.11+, `uv`, `ruff`, `pytest`. Docker optional.
 
 1. Problem and outcome in Acme's numbers, first
 2. Quick start (including `--reset` and replay mode)
-3. Results table from the eval run on Grok, plus a small Gemini vs. Grok comparison (accuracy, retries, latency, cost per invoice)
+3. Results table from the eval run on Grok, plus a small Groq (gpt-oss) vs. Grok comparison (accuracy, retries, latency, cost per invoice)
 4. Architecture diagram and agent roles
 5. Key design decisions (linked to `DECISIONS.md`)
 6. Assumptions, with spec-defined vs. assumed expectations called out
