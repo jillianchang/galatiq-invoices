@@ -15,6 +15,8 @@ Short records of each significant decision: context, choice, and why. Alternativ
 
 **Decision.** After extraction, every number and item must appear in the source text (with fuzzy matching for OCR noise), and the line math must reconcile. Failures go back to Grok as specific errors, up to 3 retries.
 **Why.** Checking output against the source is far more reliable than asking a model whether it was right.
+**Math is not a grounding failure.** Real invoices have arithmetic errors (1007, 1013). If every value is grounded but the math doesn't reconcile, the model gets one re-read (to catch a missed line) and is told not to fix the vendor's math; the values are then accepted as written and validation flags the mismatch. Otherwise a vendor's mistake would become `extraction_failed` instead of `total_mismatch`.
+**Dates stay raw.** The model copies date strings verbatim; parsing them is deterministic, so a relative date like "yesterday" is never turned into a guessed calendar date.
 
 ## D3. Agents can escalate, never de-escalate
 
