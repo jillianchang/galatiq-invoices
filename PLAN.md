@@ -117,8 +117,9 @@ Precedence: `DUPLICATE` > `REJECT` > `RETURN_TO_VENDOR` > `HOLD` > `ELIGIBLE`.
 ### Approval agent and critic
 
 - Runs for every non-duplicate invoice, so every outcome, including rejections, comes with reasoning.
-- **Critic required** when the invoice is over $10K or has any finding. Clean invoices under $10K get one approval call without the critic.
-- **Additional scrutiny over $10K** (the spec's example): an ELIGIBLE invoice over the threshold is approved only if the critic loop ends with no unresolved objections.
+- **Critic required** when the invoice is over $10K or has any finding (`critic_required_when`), on every gate except DUPLICATE. Clean invoices under $10K get one approval call without the critic.
+- **Critic power depends on the gate**: it can push APPROVE to HOLD, HOLD or RETURN to REJECT, and checks the vendor message on RETURN and the reasoning on REJECT. It never moves a decision toward payment (D3).
+- **Additional scrutiny over $10K** (the spec's example): the critic always reviews these, and any APPROVE the critic reviewed stands only if the loop ends with no unresolved objections; otherwise it becomes HOLD.
 - The agent can escalate (ELIGIBLE → HOLD, HOLD → REJECT) but never override the gate downward.
 
 ### Final outcomes
@@ -261,7 +262,7 @@ approval:
   near_threshold_pct: 0.03
   critic_required_when: [over_threshold, any_finding]
   max_critic_rounds: 2
-  approve_over_threshold_requires_no_unresolved_objections: true
+  approve_requires_no_unresolved_objections: true
 price_tolerance:
   silent_pct: 0.05
   warn_with_reason_pct: 0.25

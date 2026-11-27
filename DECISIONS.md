@@ -40,6 +40,8 @@ Short records of each significant decision: context, choice, and why. Alternativ
 
 **Context.** The spec places decision-making in the approval stage: a simulated VP review with rule-based decisions, where the agent reasons through approval or rejection with a reflection or critique loop.
 **Decision.** Validation only produces findings. The approval stage makes every decision: the policy gate sets hard constraints, then an approval agent acting as the simulated VP reasons through every non-duplicate invoice within them. It has real authority on ELIGIBLE invoices (approve or escalate), recommends resolutions for HOLDs, and writes the reasoning for rejections. A critic challenges it whenever the invoice is over $10K or has any finding.
+**Critic scope.** The spec asks for a critique loop on approval *and* rejection, so the critic reviews every non-duplicate decision that `critic_required_when` selects, but its power depends on the gate. On ELIGIBLE it can push APPROVE to HOLD; on HOLD it can push to REJECT; on RETURN_TO_VENDOR it can push to REJECT and checks that the vendor message states each discrepancy accurately; on REJECT the decision is fixed and it checks only that the reasoning cites the findings that drive it. It can never move a decision toward payment: a REJECT or RETURN gate comes from a deterministic check, and letting an argument (or injected invoice text) overturn it would make the LLM the path to money (D3). Duplicates skip the critic; blocking one is a database fact. Unresolved objections turn an APPROVE into HOLD, flag a vendor message for review before sending, and are recorded on a rejection without changing it.
+**Enforced in code.** Each gate has a fixed set of allowed decisions; an answer outside it is replaced by the gate's fail-closed default (ELIGIBLE becomes HOLD). If the LLM is unavailable, the same default applies with deterministic reasoning, so a run with no LLM never pays anything.
 **Superseded.** An earlier version had validation decide routes and made the LLM advisory to a human approver. That left clean invoices and rejections with no approval reasoning, which doesn't match the spec.
 
 ## D7. Single-shot CLI with the agent as default approver
@@ -84,7 +86,7 @@ The fingerprint is normalized vendor + invoice number, excluding the total, so a
 
 ## D13. Approval threshold means scrutiny, not an automatic hold
 
-**Decision.** $10,000, from the spec's example, configurable in `policy.yaml`. Over threshold → the critic loop is mandatory and an ELIGIBLE invoice is approved only if it ends with no unresolved objections. Within 3% below → WARN.
+**Decision.** $10,000, from the spec's example, configurable in `policy.yaml`. Over threshold → the critic loop is mandatory. Any APPROVE the critic reviews (over threshold or with any finding) stands only if the loop ends with no unresolved objections; otherwise it becomes HOLD (`approve_requires_no_unresolved_objections`). Within 3% below → WARN.
 **Why.** The spec asks for "additional scrutiny," not mandatory human approval. A single invoice just under the line is weak evidence, so it warns rather than holds.
 
 ## D14. Math mismatch → return to vendor with the discrepancy

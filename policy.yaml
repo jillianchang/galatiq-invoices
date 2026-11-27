@@ -5,7 +5,7 @@ approval:
   near_threshold_pct: 0.03
   critic_required_when: [over_threshold, any_finding]
   max_critic_rounds: 2
-  approve_over_threshold_requires_no_unresolved_objections: true
+  approve_requires_no_unresolved_objections: true   # an APPROVE the critic still objects to becomes HOLD
 
 price_tolerance:
   silent_pct: 0.05

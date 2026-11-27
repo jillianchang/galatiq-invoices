@@ -31,14 +31,19 @@ def http_error(cls, status, headers=None, body="error"):
 class FakeOpenAI:
     """Pops scripted results; records every request."""
 
-    def __init__(self, *results):
+    def __init__(self, *results, responder=None):
         self.results = list(results)
+        self.responder = responder  # used once scripted results run out
         self.requests = []
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
     def _create(self, **kwargs):
         self.requests.append(kwargs)
-        result = self.results.pop(0)
+        result = (
+            self.results.pop(0)
+            if self.results or self.responder is None
+            else (self.responder(kwargs))
+        )
         if isinstance(result, Exception):
             raise result
         return result

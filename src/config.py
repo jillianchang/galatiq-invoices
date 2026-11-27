@@ -25,7 +25,7 @@ class ApprovalPolicy(BaseModel):
     near_threshold_pct: Decimal
     critic_required_when: list[str]
     max_critic_rounds: int
-    approve_over_threshold_requires_no_unresolved_objections: bool
+    approve_requires_no_unresolved_objections: bool
 
 
 class PriceTolerance(BaseModel):
