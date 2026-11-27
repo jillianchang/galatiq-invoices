@@ -29,7 +29,7 @@ from pydantic import BaseModel
 
 from src.config import ROOT, Policy
 from src.llm.client import LLMClient, LLMError
-from src.schemas import Action, Finding, Gate, Invoice
+from src.schemas import Action, Finding, FindingSource, Gate, Invoice
 
 APPROVAL_PROMPT = (ROOT / "prompts" / "approval.md").read_text
 CRITIC_PROMPT = (ROOT / "prompts" / "critic.md").read_text
@@ -48,6 +48,17 @@ ALLOWED: dict[Gate, tuple[Decision, ...]] = {
     Gate.RETURN_TO_VENDOR: (Decision.RETURN_TO_VENDOR, Decision.REJECT),
     Gate.REJECT: (Decision.REJECT,),
 }
+
+
+def allowed_decisions(gate: Gate, findings: list[Finding]) -> tuple[Decision, ...]:
+    """ALLOWED, narrowed: a HOLD that only LLM findings block can't become a REJECT,
+    so the approval agent and critic can't get around the corroboration rule (D3)."""
+    blocking = [f for f in findings if f.action in (Action.HOLD, Action.REJECT)]
+    if gate == Gate.HOLD and blocking and all(f.source == FindingSource.LLM for f in blocking):
+        return (Decision.HOLD,)
+    return ALLOWED[gate]
+
+
 # What a gate decides when the agent can't (or answers outside ALLOWED).
 FAIL_CLOSED: dict[Gate, Decision] = {
     Gate.ELIGIBLE: Decision.HOLD,
@@ -96,6 +107,16 @@ CRITIC_SCOPE: dict[Gate, str] = {
     ),
 }
 
+
+def critic_scope(gate: Gate, allowed: tuple[Decision, ...]) -> str:
+    if gate == Gate.HOLD and Decision.REJECT not in allowed:
+        return (
+            "Only the investigator's own findings block this invoice, so it can't be "
+            "rejected without corroboration; check the recommended resolution."
+        )
+    return CRITIC_SCOPE[gate]
+
+
 CRITIC_TRIGGERS = {
     "over_threshold": lambda findings: any(f.code == "over_threshold" for f in findings),
     "any_finding": lambda findings: any(f.action != Action.INFO for f in findings),
@@ -139,7 +160,8 @@ class ApprovalWorkflow:
     ) -> ApprovalResult:
         if gate == Gate.DUPLICATE:
             raise ValueError("duplicates are blocked before approval")
-        context = self._context(invoice, findings, gate, investigator_summary)
+        allowed = allowed_decisions(gate, findings)
+        context = self._context(invoice, findings, gate, allowed, investigator_summary)
         messages = [
             {"role": "system", "content": APPROVAL_PROMPT()},
             {"role": "user", "content": context},
@@ -148,10 +170,10 @@ class ApprovalWorkflow:
             output = self._ask_approver(messages)
         except LLMError as e:
             return self._fallback(gate, findings, invoice, str(e))
-        result = self._enforce(output, gate)
+        result = self._enforce(output, gate, allowed)
 
         if critic_required(findings, gate, self.policy.approval.critic_required_when):
-            self._critic_loop(result, output, messages, context, gate)
+            self._critic_loop(result, output, messages, context, gate, allowed)
         return result
 
     # ---------- LLM calls ----------
@@ -169,6 +191,7 @@ class ApprovalWorkflow:
         messages: list[dict],
         context: str,
         gate: Gate,
+        allowed: tuple[Decision, ...],
     ) -> None:
         max_rounds = self.policy.approval.max_critic_rounds
         objections: list[str] = []
@@ -177,7 +200,7 @@ class ApprovalWorkflow:
                 {"role": "system", "content": CRITIC_PROMPT()},
                 {
                     "role": "user",
-                    "content": f"{context}\n\nYour scope: {CRITIC_SCOPE[gate]}\n\n"
+                    "content": f"{context}\n\nYour scope: {critic_scope(gate, allowed)}\n\n"
                     f"VP decision: {result.decision}\n"
                     f"Reasoning: {result.reasoning}\n"
                     f"Recommended action: {result.recommended_action}"
@@ -224,7 +247,7 @@ class ApprovalWorkflow:
             except LLMError as e:
                 result.notes.append(f"approver unavailable during revision: {e}")
                 break
-            revised = self._enforce(output, gate)
+            revised = self._enforce(output, gate, allowed)
             result.decision = revised.decision
             result.reasoning = revised.reasoning
             result.recommended_action = revised.recommended_action
@@ -252,12 +275,15 @@ class ApprovalWorkflow:
     # ---------- rules around the agent ----------
 
     @staticmethod
-    def _enforce(output: ApprovalOutput, gate: Gate) -> ApprovalResult:
+    def _enforce(
+        output: ApprovalOutput, gate: Gate, allowed: tuple[Decision, ...]
+    ) -> ApprovalResult:
         decision = Decision(output.decision)
         notes = []
-        if decision not in ALLOWED[gate]:
+        if decision not in allowed:
             notes.append(
-                f"agent chose {decision}, which the {gate} gate doesn't allow; "
+                f"agent chose {decision}, which isn't allowed here "
+                f"({', '.join(allowed)}); "
                 f"using {FAIL_CLOSED[gate]}"
             )
             decision = FAIL_CLOSED[gate]
@@ -294,6 +320,7 @@ class ApprovalWorkflow:
         invoice: Invoice,
         findings: list[Finding],
         gate: Gate,
+        allowed: tuple[Decision, ...],
         investigator_summary: str | None,
     ) -> str:
         lines = [
@@ -316,5 +343,5 @@ class ApprovalWorkflow:
             f"Approval threshold: ${threshold:,.0f}\n\n"
             f"Findings:\n{listed}\n\n"
             f"Investigator summary: {investigator_summary or 'n/a'}\n\n"
-            f"Policy gate: {gate}. Allowed decisions: {', '.join(ALLOWED[gate])}."
+            f"Policy gate: {gate}. Allowed decisions: {', '.join(allowed)}."
         )

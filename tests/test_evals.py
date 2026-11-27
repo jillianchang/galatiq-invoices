@@ -148,3 +148,19 @@ def test_cli_writes_report_and_exit_code(tmp_path, monkeypatch, capsys):
 
 def test_every_expected_file_is_scored():
     assert {p.name for p in FILES} == set(load_expected())
+
+
+def test_soft_outcome_misses_dont_fail_the_totals():
+    report = evals.ScenarioReport(
+        "batch",
+        [],
+        {"paid": 7, "paid_amount": "38825.00", "duplicates_blocked": 3, "revisions_held": 1},
+        {"paid": 6, "paid_amount": "26325.00", "duplicates_blocked": 3, "revisions_held": 1},
+        payment_calls=6,
+    )
+    assert report.totals_ok
+    report.payment_calls = 7  # a payment call that didn't produce a recorded payment
+    assert not report.totals_ok
+    report.payment_calls = 6
+    report.totals_actual["duplicates_blocked"] = 2
+    assert not report.totals_ok

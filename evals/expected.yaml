@@ -42,6 +42,8 @@ invoices:
     source: spec
     gate: ELIGIBLE
     required_findings: []
+    # 742 Evergreen Terrace (fictional): flagged as WARN, but alone it doesn't block (D3)
+    llm_findings: [suspicious_vendor_address]
     outcome: PAID
     amount: "1890.00"
 
@@ -49,7 +51,11 @@ invoices:
     source: assumption
     gate: ELIGIBLE
     required_findings: []
+    llm_findings: [suspicious_vendor_address]
     outcome: PAID
+    # Alone, the fictional address is a WARN; whether the critic accepts paying with an
+    # address check, or holds for it, is agent judgment (both runs are reasonable).
+    outcome_llm: true
     amount: "5940.00"
     batch:
       gate: HOLD

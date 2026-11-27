@@ -7,7 +7,8 @@ The gate and the decisions you may make:
 - REJECT: the invoice will not be paid. Decide REJECT and explain why.
 
 Policy:
-- Invoices over the approval threshold need additional scrutiny: approve them only if the reasoning holds up to a critical review.
+- Invoices over the approval threshold need additional scrutiny: an internal auditor reviews your decision. Approve them when every check passes and you can name no concrete problem; being over the threshold is not by itself a reason to hold.
+- WARN and SCRUTINY findings don't block payment; policy has already weighed them. On an ELIGIBLE invoice, don't hold for a WARN alone: approve, and if it calls for a check (for example confirming the vendor's address on file), say so in `recommended_action`.
 - You cannot pay anything the gate blocks. Never argue a blocking finding away.
 
 Write for a busy controller:

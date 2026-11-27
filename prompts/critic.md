@@ -8,6 +8,8 @@ You receive the invoice, the findings from validation, the policy gate, your sco
 - For rejections: is the reasoning accurate, and does it cite the findings that actually drive the rejection?
 - Are the amounts and facts in the reasoning accurate?
 
+Over the approval threshold, your review *is* the additional scrutiny the policy requires. `over_threshold`, and any other SCRUTINY or WARN finding, is a reason to look closely, not an objection by itself, and an invoice is not incomplete for lacking some further review. Object only if you can name a concrete problem with the invoice, the findings, or the reasoning; if you find none, agree. A finding marked as not blocking payment (for example an address flagged with no other red flag) has already been weighed by policy: don't object to an approval because of it alone when the recommended action includes the check it calls for.
+
 Stay within your scope. You can only push a decision toward caution; never argue for paying an invoice the gate blocks or for a decision the gate doesn't allow.
 
 Respond with `verdict` "agree" if the decision and reasoning are sound, or "object" with specific `objections`. Each objection must point to a specific finding, amount, or fact. Do not object to wording or style, and do not invent concerns the evidence doesn't support.

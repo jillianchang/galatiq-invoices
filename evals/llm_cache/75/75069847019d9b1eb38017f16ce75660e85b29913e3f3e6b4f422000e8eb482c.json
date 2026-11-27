@@ -1,0 +1,69 @@
+{
+  "key": "75069847019d9b1eb38017f16ce75660e85b29913e3f3e6b4f422000e8eb482c",
+  "model": "openai/gpt-oss-120b",
+  "recorded_at": "2026-11-27T20:40:38+00:00",
+  "request": {
+    "messages": [
+      {
+        "content": "You are an internal auditor at Acme Corp. You review the VP's payment decisions before they take effect, and you are skeptical by default: an approved invoice that should have been held costs real money, and a wrong message to a vendor costs credibility.\n\nYou receive the invoice, the findings from validation, the policy gate, your scope for this gate, and the VP's decision with its reasoning. Check:\n- Is the decision consistent with the findings and the gate? Does the reasoning ignore or misstate any finding?\n- For approvals: is there any finding, amount, or pattern that should have stopped payment? Over the approval threshold, would you sign off on this payment yourself?\n- For holds: is the recommended next step concrete and correct? Should the evidence lead to a rejection instead?\n- For returns to the vendor: does the vendor message state each discrepancy accurately (stated vs. computed values, quantities, items)? Does anything point to fraud, which would call for a rejection?\n- For rejections: is the reasoning accurate, and does it cite the findings that actually drive the rejection?\n- Are the amounts and facts in the reasoning accurate?\n\nOver the approval threshold, your review *is* the additional scrutiny the policy requires. `over_threshold`, and any other SCRUTINY or WARN finding, is a reason to look closely, not an objection by itself, and an invoice is not incomplete for lacking some further review. Object only if you can name a concrete problem with the invoice, the findings, or the reasoning; if you find none, agree. A finding marked as not blocking payment (for example an address flagged with no other red flag) has already been weighed by policy: don't object to an approval because of it alone when the recommended action includes the check it calls for.\n\nStay within your scope. You can only push a decision toward caution; never argue for paying an invoice the gate blocks or for a decision the gate doesn't allow.\n\nRespond with `verdict` \"agree\" if the decision and reasoning are sound, or \"object\" with specific `objections`. Each objection must point to a specific finding, amount, or fact. Do not object to wording or style, and do not invent concerns the evidence doesn't support.\n",
+        "role": "system"
+      },
+      {
+        "content": "Invoice INV-1010 from Consolidated Materials Group\nTotal: $7,185.00; due 2026-02-26; terms Net 30\nLines: WidgetA x8 @ $250.00; WidgetB x4 @ $500.00; GadgetX x2 @ $750.00; WidgetA (rush order) x4 @ $300.00 (rush order)\nApproval threshold: $10,000\n\nFindings:\n- price_over_catalog [WARN] (rule): WidgetA (rush order) billed at $300.00 vs catalog $250.00 (+20%), reason given: 'rush order'.\n\nInvestigator summary: Invoice appears normal; no new concerns identified beyond the previously noted price over catalog for the rush order.\n\nPolicy gate: ELIGIBLE. Allowed decisions: APPROVE, HOLD.\n\nYour scope: The decision is open: you may push APPROVE to HOLD.\n\nVP decision: APPROVE\nReasoning: The invoice is ELIGIBLE with only a WARN finding (price_over_catalog) for the rush order WidgetA, which does not block payment. The total amount is $7,185.00, below the $10,000 threshold, and no other issues were identified.\nRecommended action: Pay $7,185.00 to Consolidated Materials Group. Verify that the rush order pricing for WidgetA was pre\u2011approved per the rush\u2011order policy.",
+        "role": "user"
+      }
+    ],
+    "model": "openai/gpt-oss-120b",
+    "reasoning_effort": "low",
+    "response_format": {
+      "json_schema": {
+        "name": "CriticOutput",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "objections": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Objections",
+              "type": "array"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "verdict": {
+              "enum": [
+                "agree",
+                "object"
+              ],
+              "title": "Verdict",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objections",
+            "summary"
+          ],
+          "title": "CriticOutput",
+          "type": "object"
+        },
+        "strict": true
+      },
+      "type": "json_schema"
+    },
+    "temperature": 0.0
+  },
+  "response": {
+    "content": "{\n  \"verdict\": \"agree\",\n  \"objections\": [],\n  \"summary\": \"The VP's approval aligns with the ELIGIBLE gate, the only finding is a non\u2011blocking WARN about rush\u2011order pricing, and the amount is below the approval threshold. No concrete issues are identified, so the decision and reasoning are sound.\"\n}",
+    "finish_reason": "stop",
+    "tool_calls": [],
+    "usage": {
+      "cached_tokens": 0,
+      "completion_tokens": 121,
+      "prompt_tokens": 909,
+      "total_tokens": 1030
+    }
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "key": "d013bee66f530d5117472ff8fcf9214e7ee28e81b5d2e38dfc17e5c484b6196b",
+  "model": "openai/gpt-oss-120b",
+  "recorded_at": "2026-11-27T20:40:41+00:00",
+  "request": {
+    "messages": [
+      {
+        "content": "You are an internal auditor at Acme Corp. You review the VP's payment decisions before they take effect, and you are skeptical by default: an approved invoice that should have been held costs real money, and a wrong message to a vendor costs credibility.\n\nYou receive the invoice, the findings from validation, the policy gate, your scope for this gate, and the VP's decision with its reasoning. Check:\n- Is the decision consistent with the findings and the gate? Does the reasoning ignore or misstate any finding?\n- For approvals: is there any finding, amount, or pattern that should have stopped payment? Over the approval threshold, would you sign off on this payment yourself?\n- For holds: is the recommended next step concrete and correct? Should the evidence lead to a rejection instead?\n- For returns to the vendor: does the vendor message state each discrepancy accurately (stated vs. computed values, quantities, items)? Does anything point to fraud, which would call for a rejection?\n- For rejections: is the reasoning accurate, and does it cite the findings that actually drive the rejection?\n- Are the amounts and facts in the reasoning accurate?\n\nOver the approval threshold, your review *is* the additional scrutiny the policy requires. `over_threshold`, and any other SCRUTINY or WARN finding, is a reason to look closely, not an objection by itself, and an invoice is not incomplete for lacking some further review. Object only if you can name a concrete problem with the invoice, the findings, or the reasoning; if you find none, agree. A finding marked as not blocking payment (for example an address flagged with no other red flag) has already been weighed by policy: don't object to an approval because of it alone when the recommended action includes the check it calls for.\n\nStay within your scope. You can only push a decision toward caution; never argue for paying an invoice the gate blocks or for a decision the gate doesn't allow.\n\nRespond with `verdict` \"agree\" if the decision and reasoning are sound, or \"object\" with specific `objections`. Each objection must point to a specific finding, amount, or fact. Do not object to wording or style, and do not invent concerns the evidence doesn't support.\n",
+        "role": "system"
+      },
+      {
+        "content": "Invoice INV-1012 from QuickShip Distributers\nTotal: $9,975.00; due 2026-02-25; terms Net 30\nLines: Widget A x12 @ $250.00; WidgetB x7 @ $500.00; Gadget X x4 @ $750.00\nApproval threshold: $10,000\n\nFindings:\n- near_threshold [WARN] (rule): Total $9,975.00 is just under the $10,000 approval threshold.\n- vendor_identity_change [HOLD] (rule): The vendor's identity changed; verify it is the same supplier.\n\nInvestigator summary: Invoice appears mathematically correct and contains no new red flags beyond those already identified.\n\nPolicy gate: HOLD. Allowed decisions: HOLD, REJECT.\n\nYour scope: You may push HOLD to REJECT, and check the recommended resolution.\n\nVP decision: HOLD\nReasoning: The invoice is blocked by a HOLD finding (vendor_identity_change) indicating the vendor's identity has changed and must be verified before payment. The total of $9,975.00 is below the $10,000 threshold, but the identity issue is a hard block.\nRecommended action: Hold payment until the vendor's identity is confirmed as the same supplier; request supporting documentation (e.g., updated W-9, corporate resolution) before releasing funds.",
+        "role": "user"
+      }
+    ],
+    "model": "openai/gpt-oss-120b",
+    "reasoning_effort": "low",
+    "response_format": {
+      "json_schema": {
+        "name": "CriticOutput",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "objections": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Objections",
+              "type": "array"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "verdict": {
+              "enum": [
+                "agree",
+                "object"
+              ],
+              "title": "Verdict",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objections",
+            "summary"
+          ],
+          "title": "CriticOutput",
+          "type": "object"
+        },
+        "strict": true
+      },
+      "type": "json_schema"
+    },
+    "temperature": 0.0
+  },
+  "response": {
+    "content": "{\n  \"verdict\": \"agree\",\n  \"objections\": [],\n  \"summary\": \"The VP's HOLD decision aligns with the policy gate and correctly references the vendor_identity_change finding. The reasoning accurately reflects the need for verification, and no concrete issues are identified in the invoice or findings.\"\n}",
+    "finish_reason": "stop",
+    "tool_calls": [],
+    "usage": {
+      "cached_tokens": 512,
+      "completion_tokens": 117,
+      "prompt_tokens": 899,
+      "total_tokens": 1016
+    }
+  }
+}

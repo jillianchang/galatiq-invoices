@@ -2,10 +2,10 @@ import json
 
 import pytest
 
-from src.agents.approval import ApprovalWorkflow, Decision, critic_required
+from src.agents.approval import ApprovalWorkflow, Decision, allowed_decisions, critic_required
 from src.config import load_policy
 from src.rules.codes import finding
-from src.schemas import Gate, Invoice
+from src.schemas import Action, FindingSource, Gate, Invoice
 from tests.fakes import FakeOpenAI, completion, make_client
 
 POLICY = load_policy()
@@ -49,7 +49,7 @@ def test_agent_cannot_pay_what_the_gate_blocks(tmp_path):
     wf, _ = workflow(tmp_path, approval("APPROVE"), critic("agree"))
     result = wf.decide(INVOICE, [finding("unknown_item", "WidgetC")], Gate.HOLD)
     assert result.decision == Decision.HOLD
-    assert "doesn't allow" in result.notes[0]
+    assert "isn't allowed" in result.notes[0]
 
 
 def test_eligible_garbage_decision_fails_closed(tmp_path):
@@ -149,7 +149,7 @@ def test_reject_critic_cannot_overturn(tmp_path):
     )
     result = wf.decide(INVOICE, [finding("fraud_pattern", "x")], Gate.REJECT)
     assert result.decision == Decision.REJECT
-    assert any("doesn't allow" in n for n in result.notes)
+    assert any("isn't allowed" in n for n in result.notes)
     assert "decision stands" in result.notes[-1]
     assert "rejection is fixed by policy" in fake.requests[1]["messages"][1]["content"]
 
@@ -180,3 +180,32 @@ def test_critic_required_reads_policy():
     assert not critic_required(near, Gate.ELIGIBLE, [])
     with pytest.raises(ValueError):
         critic_required(near, Gate.ELIGIBLE, ["typo"])
+
+
+def _llm(code, msg="x"):
+    return finding(code, msg, source=FindingSource.LLM)
+
+
+def test_hold_blocked_only_by_agent_findings_cannot_be_rejected(tmp_path):
+    """The approval agent and critic can't get around the corroboration rule (D3)."""
+    wf, fake = workflow(
+        tmp_path,
+        approval("HOLD"),
+        critic("object", ["The address is fictional; reject it."]),
+        approval("REJECT"),
+        critic("agree"),
+    )
+    uncorroborated = finding("suspected_fraud", "x", action=Action.HOLD, source=FindingSource.LLM)
+    findings = [uncorroborated, finding("over_threshold", "x")]
+    result = wf.decide(INVOICE, findings, Gate.HOLD)
+    assert result.decision == Decision.HOLD
+    assert "Allowed decisions: HOLD." in fake.requests[0]["messages"][1]["content"]
+    assert "can't be rejected without corroboration" in fake.requests[1]["messages"][1]["content"]
+
+
+def test_allowed_decisions():
+    rule_hold = finding("unknown_item", "WidgetC")
+    agent_hold = _llm("suspicious_vendor_address")
+    assert allowed_decisions(Gate.HOLD, [agent_hold]) == (Decision.HOLD,)
+    assert allowed_decisions(Gate.HOLD, [agent_hold, rule_hold]) == (Decision.HOLD, Decision.REJECT)
+    assert allowed_decisions(Gate.ELIGIBLE, [agent_hold]) == (Decision.APPROVE, Decision.HOLD)

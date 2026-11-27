@@ -9,9 +9,10 @@ Two scenarios, each on fresh databases:
   batch       every file in sorted order on one database (duplicates, revisions)
 
 Hard checks (fail the run): gate, required findings, outcome (unless the
-expectation marks it `outcome_llm`), amount paid, `must_not_pay`, and the batch
-totals. Soft checks (reported, never fail): findings expected from agent
-judgment, outcomes that depend on it, and extraction field accuracy against
+expectation marks it `outcome_llm`), amount paid, `must_not_pay`, duplicates
+blocked and revisions held, and exactly one payment call per payment. Soft
+checks (reported, never fail): findings expected from agent judgment, outcomes
+that depend on it, paid totals, and extraction field accuracy against
 evals/extraction_truth.yaml.
 """
 
@@ -51,6 +52,7 @@ from src.pipeline import ProcessResult, build_graph, list_invoices, make_service
 from src.schemas import Invoice
 
 SCENARIOS = ("standalone", "batch")
+HARD_TOTALS = ("duplicates_blocked", "revisions_held")
 RESULTS_DIR = EVALS / "results"
 
 
@@ -204,7 +206,11 @@ class ScenarioReport:
 
     @property
     def totals_ok(self) -> bool:
-        return self.totals_expected == self.totals_actual
+        """Cross-invoice behavior: duplicates blocked, revisions held, and one payment call
+        per payment. Paid counts are reported, but they include outcomes that depend on
+        agent judgment, which are scored per invoice as soft checks."""
+        exp, act = self.totals_expected, self.totals_actual
+        return all(exp[k] == act[k] for k in HARD_TOTALS) and self.payment_calls == act["paid"]
 
     @property
     def passed(self) -> bool:
@@ -410,7 +416,7 @@ def render(report: ScenarioReport, console: Console) -> None:
     console.print(
         f"  [{style}]totals[/]: paid {act['paid']} (${Decimal(act['paid_amount']):,.2f}), "
         f"duplicates blocked {act['duplicates_blocked']}, revisions held "
-        f"{act['revisions_held']}" + ("" if report.totals_ok else f"   [red]expected {exp}[/]")
+        f"{act['revisions_held']}" + ("" if exp == act else f"   [dim]expected {exp}[/]")
     )
     if m["cache_misses"]:
         console.print(

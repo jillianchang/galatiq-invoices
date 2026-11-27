@@ -235,7 +235,23 @@ class InvestigatorAgent:
 
         # A fraud REJECT from judgment alone needs a second, independent red flag.
         # Uncorroborated, it is held for a human instead of rejected outright.
-        flags = {g.code for g in [*existing, *outcome.findings]} & RED_FLAG_CODES
+        # Likewise an implausible address alone is flagged for the reviewer but
+        # doesn't block payment (1004's "742 Evergreen Terrace" is a real order).
+        codes = {g.code for g in [*existing, *outcome.findings]}
+        flags = codes & RED_FLAG_CODES
+        address_corroborated = bool(flags - {"suspicious_vendor_address"}) or (
+            "suspected_fraud" in codes
+        )
+        for i, f in enumerate(outcome.findings):
+            if f.code == "suspicious_vendor_address" and not address_corroborated:
+                outcome.findings[i] = f.model_copy(
+                    update={
+                        "action": Action.WARN,
+                        "message": f"{f.message} (No other red flag, so flagged for the "
+                        "reviewer rather than blocking payment.)",
+                        "evidence": {**f.evidence, "corroborated": False},
+                    }
+                )
         for i, f in enumerate(outcome.findings):
             if f.code == "suspected_fraud" and not flags:
                 outcome.findings[i] = f.model_copy(

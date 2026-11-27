@@ -8,6 +8,7 @@ from src.config import ROOT, load_policy
 from src.db import connect, get_inventory, init_db
 from src.ingestion import ingest
 from src.rules import RuleContext
+from src.rules.codes import finding
 from src.schemas import Action, FindingSource
 from src.tools.db_tools import InvestigatorTools
 from tests.fakes import FakeOpenAI, completion, make_client
@@ -57,8 +58,9 @@ def test_grounded_finding_is_added_with_registry_action(setup):
     inv, fake = agent(report([ADDRESS]))
     out = inv.investigate(ctx, [])
     [f] = out.findings
-    assert f.code == "suspicious_vendor_address" and f.action == Action.HOLD
-    assert f.source == FindingSource.LLM
+    assert f.code == "suspicious_vendor_address" and f.source == FindingSource.LLM
+    # Alone, an implausible address is flagged for the reviewer but doesn't block payment.
+    assert f.action == Action.WARN and f.evidence["corroborated"] is False
     assert fake.requests[0]["model"] == "fast-m"
     assert "<document>" in fake.requests[0]["messages"][1]["content"]
 
@@ -178,3 +180,11 @@ def test_corroborated_fraud_suspicion_rejects(setup):
     inv, _ = agent(report([fraud, ADDRESS]))  # address flag corroborates
     codes = {f.code: f.action for f in inv.investigate(ctx, []).findings}
     assert codes == {"suspected_fraud": Action.REJECT, "suspicious_vendor_address": Action.HOLD}
+
+
+def test_corroborated_address_blocks(setup):
+    ctx, agent = setup
+    inv, _ = agent(report([ADDRESS]))
+    pressure = finding("payment_pressure", "URGENT")
+    [f] = inv.investigate(ctx, [pressure]).findings
+    assert f.action == Action.HOLD

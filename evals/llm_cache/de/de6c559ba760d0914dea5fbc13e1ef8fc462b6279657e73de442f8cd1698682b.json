@@ -1,0 +1,69 @@
+{
+  "key": "de6c559ba760d0914dea5fbc13e1ef8fc462b6279657e73de442f8cd1698682b",
+  "model": "openai/gpt-oss-120b",
+  "recorded_at": "2026-11-27T20:41:39+00:00",
+  "request": {
+    "messages": [
+      {
+        "content": "You are an internal auditor at Acme Corp. You review the VP's payment decisions before they take effect, and you are skeptical by default: an approved invoice that should have been held costs real money, and a wrong message to a vendor costs credibility.\n\nYou receive the invoice, the findings from validation, the policy gate, your scope for this gate, and the VP's decision with its reasoning. Check:\n- Is the decision consistent with the findings and the gate? Does the reasoning ignore or misstate any finding?\n- For approvals: is there any finding, amount, or pattern that should have stopped payment? Over the approval threshold, would you sign off on this payment yourself?\n- For holds: is the recommended next step concrete and correct? Should the evidence lead to a rejection instead?\n- For returns to the vendor: does the vendor message state each discrepancy accurately (stated vs. computed values, quantities, items)? Does anything point to fraud, which would call for a rejection?\n- For rejections: is the reasoning accurate, and does it cite the findings that actually drive the rejection?\n- Are the amounts and facts in the reasoning accurate?\n\nOver the approval threshold, your review *is* the additional scrutiny the policy requires. `over_threshold`, and any other SCRUTINY or WARN finding, is a reason to look closely, not an objection by itself, and an invoice is not incomplete for lacking some further review. Object only if you can name a concrete problem with the invoice, the findings, or the reasoning; if you find none, agree. A finding marked as not blocking payment (for example an address flagged with no other red flag) has already been weighed by policy: don't object to an approval because of it alone when the recommended action includes the check it calls for.\n\nStay within your scope. You can only push a decision toward caution; never argue for paying an invoice the gate blocks or for a decision the gate doesn't allow.\n\nRespond with `verdict` \"agree\" if the decision and reasoning are sound, or \"object\" with specific `objections`. Each objection must point to a specific finding, amount, or fact. Do not object to wording or style, and do not invent concerns the evidence doesn't support.\n",
+        "role": "system"
+      },
+      {
+        "content": "Invoice INV-1013 from Atlas Industrial Supply\nTotal: $22,562.80; due 2026-03-24; terms Net 60\nLines: WidgetA x15 @ $250.00; WidgetB x10 @ $500.00; GadgetX x5 @ $750.00; WidgetA x5 @ $240.00 (Volume discount); WidgetB x8 @ $480.00 (Volume discount); GadgetX x3 @ $750.00 (Expedited); WidgetA x2 @ $250.00 (Replacement); GadgetX x1 @ $750.00 (Sample)\nApproval threshold: $10,000\n\nFindings:\n- total_mismatch [RETURN] (rule): Subtotal + tax + shipping = $22,512.80, but the stated total is $22,562.80 ($50.00 over).\n- stock_exceeded [HOLD] (rule): Quantity exceeds available stock: WidgetA 22 requested, 15 in stock; WidgetB 18 requested, 10 in stock; GadgetX 9 requested, 5 in stock.\n- billed_sample_or_replacement [WARN] (rule): Billed lines are marked as samples or replacements, which are usually free: WidgetA x2 (Replacement); GadgetX x1 (Sample).\n- over_threshold [SCRUTINY] (rule): Total $22,562.80 is over the $10,000 approval threshold; additional scrutiny required.\n\nInvestigator summary: The invoice shows several known issues (total mismatch, stock exceeded, sample/replacement billing, and threshold exceedance) but no additional red flags such as implausible vendor address or changed bank details.\n\nPolicy gate: RETURN_TO_VENDOR. Allowed decisions: RETURN_TO_VENDOR, REJECT.\n\nYour scope: The invoice will not be paid. You may push RETURN_TO_VENDOR to REJECT, and check that the vendor message states the discrepancies accurately.\n\nVP decision: RETURN_TO_VENDOR\nReasoning: The invoice has a total_mismatch (stated $22,562.80 vs calculated $22,512.80, $50.00 over) and stock_exceeded findings where requested quantities exceed available inventory for WidgetA, WidgetB, and GadgetX. Additionally, billed_sample_or_replacement lines should be free, indicating pricing errors. These blocking issues require correction before payment.\nRecommended action: Return the invoice to Atlas Industrial Supply for correction of the total amount and adjustment of quantities to match available stock, and remove charges for sample/replacement items.\nVendor message: Please correct the invoice: the total should be $22,512.80 (the current $22,562.80 is $50.00 too high), adjust quantities to match available stock (WidgetA 15, WidgetB 10, GadgetX 5), and remove charges for the replacement WidgetA and sample GadgetX lines.",
+        "role": "user"
+      }
+    ],
+    "model": "openai/gpt-oss-120b",
+    "reasoning_effort": "low",
+    "response_format": {
+      "json_schema": {
+        "name": "CriticOutput",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "objections": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Objections",
+              "type": "array"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "verdict": {
+              "enum": [
+                "agree",
+                "object"
+              ],
+              "title": "Verdict",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objections",
+            "summary"
+          ],
+          "title": "CriticOutput",
+          "type": "object"
+        },
+        "strict": true
+      },
+      "type": "json_schema"
+    },
+    "temperature": 0.0
+  },
+  "response": {
+    "content": "{\n  \"verdict\": \"agree\",\n  \"objections\": [],\n  \"summary\": \"The VP's decision to return the invoice to the vendor aligns with the RETURN_TO_VENDOR gate and accurately reflects all findings (total mismatch, stock exceeded, and billed sample/replacement). The vendor message correctly details each discrepancy. No concrete problem with the invoice or reasoning was identified.\"\n}",
+    "finish_reason": "stop",
+    "tool_calls": [],
+    "usage": {
+      "cached_tokens": 512,
+      "completion_tokens": 125,
+      "prompt_tokens": 1208,
+      "total_tokens": 1333
+    }
+  }
+}

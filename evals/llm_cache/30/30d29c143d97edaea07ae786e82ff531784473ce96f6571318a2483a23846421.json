@@ -1,0 +1,69 @@
+{
+  "key": "30d29c143d97edaea07ae786e82ff531784473ce96f6571318a2483a23846421",
+  "model": "openai/gpt-oss-120b",
+  "recorded_at": "2026-11-27T20:39:40+00:00",
+  "request": {
+    "messages": [
+      {
+        "content": "You are an internal auditor at Acme Corp. You review the VP's payment decisions before they take effect, and you are skeptical by default: an approved invoice that should have been held costs real money, and a wrong message to a vendor costs credibility.\n\nYou receive the invoice, the findings from validation, the policy gate, your scope for this gate, and the VP's decision with its reasoning. Check:\n- Is the decision consistent with the findings and the gate? Does the reasoning ignore or misstate any finding?\n- For approvals: is there any finding, amount, or pattern that should have stopped payment? Over the approval threshold, would you sign off on this payment yourself?\n- For holds: is the recommended next step concrete and correct? Should the evidence lead to a rejection instead?\n- For returns to the vendor: does the vendor message state each discrepancy accurately (stated vs. computed values, quantities, items)? Does anything point to fraud, which would call for a rejection?\n- For rejections: is the reasoning accurate, and does it cite the findings that actually drive the rejection?\n- Are the amounts and facts in the reasoning accurate?\n\nOver the approval threshold, your review *is* the additional scrutiny the policy requires. `over_threshold`, and any other SCRUTINY or WARN finding, is a reason to look closely, not an objection by itself, and an invoice is not incomplete for lacking some further review. Object only if you can name a concrete problem with the invoice, the findings, or the reasoning; if you find none, agree. A finding marked as not blocking payment (for example an address flagged with no other red flag) has already been weighed by policy: don't object to an approval because of it alone when the recommended action includes the check it calls for.\n\nStay within your scope. You can only push a decision toward caution; never argue for paying an invoice the gate blocks or for a decision the gate doesn't allow.\n\nRespond with `verdict` \"agree\" if the decision and reasoning are sound, or \"object\" with specific `objections`. Each objection must point to a specific finding, amount, or fact. Do not object to wording or style, and do not invent concerns the evidence doesn't support.\n",
+        "role": "system"
+      },
+      {
+        "content": "Invoice INV-1008 from NoProd Industries\nTotal: $9,900.00; due 2026-01-20; terms None\nLines: SuperGizmo x12 @ $400.00; MegaSprocket x6 @ $850.00\nApproval threshold: $10,000\n\nFindings:\n- no_catalog_items [REJECT] (rule): None of the items are in the inventory catalog: SuperGizmo, MegaSprocket.\n- near_threshold [WARN] (rule): Total $9,900.00 is just under the $10,000 approval threshold.\n- suspicious_vendor_address [HOLD] (llm): Vendor address appears to be the same as the vendor name, indicating a likely missing or fabricated address.\n\nInvestigator summary: The invoice raises concerns about the vendor\u2019s legitimacy due to an implausible address and missing catalog items.\n\nPolicy gate: REJECT. Allowed decisions: REJECT.\n\nYour scope: The rejection is fixed by policy and cannot change. Check only that the reasoning is accurate and cites the findings that drive it.\n\nVP decision: REJECT\nReasoning: The invoice is blocked by a REJECT finding (no_catalog_items) indicating that none of the line items exist in our inventory catalog, and a HOLD finding (suspicious_vendor_address) raises legitimacy concerns. Both findings are blocking, and the policy gate mandates REJECT. The total amount is $9,900.00.\nRecommended action: Do not process payment for INV-1008. Document the rejection and notify the procurement team to seek a corrected invoice or alternative vendor.",
+        "role": "user"
+      }
+    ],
+    "model": "openai/gpt-oss-120b",
+    "reasoning_effort": "low",
+    "response_format": {
+      "json_schema": {
+        "name": "CriticOutput",
+        "schema": {
+          "additionalProperties": false,
+          "properties": {
+            "objections": {
+              "items": {
+                "type": "string"
+              },
+              "title": "Objections",
+              "type": "array"
+            },
+            "summary": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "verdict": {
+              "enum": [
+                "agree",
+                "object"
+              ],
+              "title": "Verdict",
+              "type": "string"
+            }
+          },
+          "required": [
+            "verdict",
+            "objections",
+            "summary"
+          ],
+          "title": "CriticOutput",
+          "type": "object"
+        },
+        "strict": true
+      },
+      "type": "json_schema"
+    },
+    "temperature": 0.0
+  },
+  "response": {
+    "content": "{\n  \"verdict\": \"agree\",\n  \"objections\": [],\n  \"summary\": \"The VP's REJECT decision aligns with the policy gate and correctly references the REJECT finding (no_catalog_items) as the primary blocker, while also noting the HOLD finding. All stated amounts and facts are accurate.\"\n}",
+    "finish_reason": "stop",
+    "tool_calls": [],
+    "usage": {
+      "cached_tokens": 0,
+      "completion_tokens": 135,
+      "prompt_tokens": 948,
+      "total_tokens": 1083
+    }
+  }
+}
