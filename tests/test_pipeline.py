@@ -172,6 +172,7 @@ def test_cli_runs_end_to_end_offline(tmp_path, capsys, monkeypatch):
     import main
 
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("LLM_CACHE_DIR", str(tmp_path / "empty-cache"))
     src = DATA / "invoice_1006.csv"
     shutil.copy(src, tmp_path / src.name)
     code = main.main(

@@ -18,18 +18,12 @@ from pathlib import Path
 
 from rich.console import Console
 
-from src.agents.approval import ApprovalWorkflow
-from src.agents.extraction import ExtractionAgent
-from src.agents.investigator import InvestigatorAgent
 from src.config import Settings, load_policy
-from src.db import DEFAULT_DB_PATH, connect, get_inventory, init_db, reset_db
+from src.db import DEFAULT_DB_PATH, connect, init_db, reset_db
 from src.llm.client import LLMClient
 from src.observability import RunLogger, new_run_id
-from src.pipeline import Services, build_graph, process_file
+from src.pipeline import build_graph, list_invoices, make_services, process_file
 from src.report import render_result, render_summary
-from src.tools.db_tools import InvestigatorTools
-
-INVOICE_SUFFIXES = {".txt", ".pdf", ".json", ".csv", ".xml"}
 
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -65,11 +59,7 @@ def main(argv: list[str] | None = None) -> int:
         if not args.invoice_dir.is_dir():
             print(f"error: {args.invoice_dir} is not a folder", file=sys.stderr)
             return 2
-        files = sorted(
-            p
-            for p in args.invoice_dir.iterdir()
-            if p.suffix.lower() in INVOICE_SUFFIXES and p.name.startswith("invoice")
-        )
+        files = list_invoices(args.invoice_dir)
 
     policy = load_policy()
     settings = Settings.from_env()
@@ -78,18 +68,9 @@ def main(argv: list[str] | None = None) -> int:
 
     conn = connect(args.db)
     reset_db(conn) if args.reset else init_db(conn)
-    inventory = get_inventory(conn)
     logger = RunLogger(new_run_id(), conn)
     llm = LLMClient(settings, policy.llm, on_event=logger.llm_event)
-    svc = Services(
-        conn=conn,
-        policy=policy,
-        inventory=inventory,
-        logger=logger,
-        approval=ApprovalWorkflow(llm, policy),
-        extractor=ExtractionAgent(llm, policy.llm.max_extraction_retries),
-        investigator=InvestigatorAgent(llm, InvestigatorTools(conn, inventory, policy)),
-    )
+    svc = make_services(conn, policy, llm, logger)
     graph = build_graph(svc)
     console = Console(stderr=True)
 

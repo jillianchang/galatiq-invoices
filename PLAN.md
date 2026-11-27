@@ -380,7 +380,7 @@ The spec defines validation results for 1001–1004, 1006, 1008, 1009, and 1016.
 | 1015.csv | assumption | ELIGIBLE | none | PAID $6,500.00 | |
 | 1016.json | spec | HOLD | `unknown_item` (WidgetC); agent recommends partial approval | ON_HOLD | |
 
-Batch scenario totals: 6 invoices paid ($26,325.00), 3 duplicates blocked, 1 revision held.
+Batch scenario totals: 7 invoices paid ($38,825.00: the six above plus `invoice_2005_clean_large.json`), 3 duplicates blocked, 1 revision held. `evals/run.py` derives these from `expected.yaml` rather than hard-coding them.
 
 Reported metrics: gate accuracy, finding recall, outcome accuracy, extraction field accuracy, LLM calls and latency per invoice.
 

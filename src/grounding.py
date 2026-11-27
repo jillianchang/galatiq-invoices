@@ -89,7 +89,13 @@ def check_grounding(extracted: Any, source: str) -> list[str]:
     if not extracted.line_items:
         errors.append("No line items were extracted; every invoice lists at least one item.")
     for i, line in enumerate(extracted.line_items, start=1):
-        text_ok(f"line {i} name", line.name)
+        # "WidgetA (Replacement)": the note may be printed in its own column, so the
+        # name and each parenthetical are checked separately.
+        parts = [part for part in re.split(r"[()]", line.name or "") if _squash(part)]
+        if any(_squash(part) not in squashed for part in parts):
+            errors.append(
+                f"line {i} name={line.name!r} does not appear in the document; copy it verbatim."
+            )
         number_ok(f"line {i} ({line.name}) quantity", line.quantity)
         number_ok(f"line {i} ({line.name}) unit_price", line.unit_price)
         number_ok(f"line {i} ({line.name}) amount", line.amount)

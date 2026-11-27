@@ -1,4 +1,4 @@
-.PHONY: install test lint fmt seed check-llm
+.PHONY: install test lint fmt seed check-llm eval eval-replay
 
 install:
 	uv sync
@@ -19,3 +19,9 @@ seed:
 
 check-llm:
 	uv run python scripts/check_llm.py
+
+eval:
+	uv run python -m evals.run
+
+eval-replay:
+	uv run python -m evals.run --llm replay

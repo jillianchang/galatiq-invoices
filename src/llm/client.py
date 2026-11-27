@@ -301,6 +301,7 @@ class LLMClient:
                     cached, request["model"], role, cache_hit=True, latency_ms=0
                 )
             if mode == "replay":
+                self._on_event("llm_cache_miss", {"role": role, "model": request["model"]})
                 raise CacheMiss(
                     f"No cached response for this {role} call ({request['model']}). "
                     "Set LLM_API_KEY to record it, or use the committed cache's model."

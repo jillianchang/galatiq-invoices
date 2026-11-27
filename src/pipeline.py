@@ -21,14 +21,19 @@ from src.agents.approval import ApprovalResult, ApprovalWorkflow, Decision
 from src.agents.extraction import ExtractionAgent
 from src.agents.investigator import InvestigatorAgent
 from src.config import Policy
+from src.db import get_inventory
 from src.gate import compute_gate
 from src.ingestion import IngestionResult, ingest
+from src.llm.client import LLMClient
 from src.observability import RunLogger
 from src.payment import PaymentResult, mock_payment, pay_invoice
 from src.rules.context import Inventory
 from src.schemas import Action, Finding, Gate, Invoice, Status
 from src.store import finalize, invoice_keys, register, start_submission
+from src.tools.db_tools import InvestigatorTools
 from src.validation import validate
+
+INVOICE_SUFFIXES = {".txt", ".pdf", ".json", ".csv", ".xml"}
 
 DECISION_TO_STATUS = {
     Decision.HOLD: Status.ON_HOLD,
@@ -47,6 +52,32 @@ class Services:
     extractor: ExtractionAgent | None = None
     investigator: InvestigatorAgent | None = None
     pay_fn: Any = mock_payment
+
+
+def list_invoices(directory: Path) -> list[Path]:
+    """Every invoice file in a folder, in sorted filename order."""
+    return sorted(
+        p
+        for p in directory.iterdir()
+        if p.suffix.lower() in INVOICE_SUFFIXES and p.name.startswith("invoice")
+    )
+
+
+def make_services(
+    conn: Any, policy: Policy, llm: LLMClient, logger: RunLogger, *, pay_fn: Any = mock_payment
+) -> Services:
+    """The agents and tools for one database, all sharing one LLM client."""
+    inventory = get_inventory(conn)
+    return Services(
+        conn=conn,
+        policy=policy,
+        inventory=inventory,
+        logger=logger,
+        approval=ApprovalWorkflow(llm, policy),
+        extractor=ExtractionAgent(llm, policy.llm.max_extraction_retries),
+        investigator=InvestigatorAgent(llm, InvestigatorTools(conn, inventory, policy)),
+        pay_fn=pay_fn,
+    )
 
 
 @dataclass

@@ -56,6 +56,7 @@ class RunLogger:
             "prompt_tokens": 0,
             "completion_tokens": 0,
             "retries": 0,
+            "cache_misses": 0,
         }
 
     def stage(self, stage: str, event: str, **payload: Any) -> None:
@@ -103,6 +104,8 @@ class RunLogger:
             self.llm_stats["completion_tokens"] += payload.get("completion_tokens", 0)
         elif event in ("llm_retry", "llm_rate_limited"):
             self.llm_stats["retries"] += 1
+        elif event == "llm_cache_miss":
+            self.llm_stats["cache_misses"] += 1
 
     def close(self) -> None:
         self._trace.close()
